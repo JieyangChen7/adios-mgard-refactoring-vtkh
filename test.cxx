@@ -196,6 +196,7 @@ void vis(int rank,
          double iso_value, double * surface_result) {
 
   vtkh::SetMPICommHandle(MPI_Comm_c2f(MPI_COMM_WORLD));
+  vtkh::ForceOpenMP();
   vtkm::Id3 dims(dim_z, dim_y, dim_x);
   vtkm::Id3 org(org_z, org_y, org_x);
   vtkm::Id3 spc(1, 1, 1);
