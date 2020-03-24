@@ -126,7 +126,7 @@ void recompose(double * recomposed_data,
 void adios_write(int num_of_class, double ** decomposed_data, 
                  int ** index, size_t * counters, 
                  std::string * var_names, std::string * idx_names,
-                 std::string filename) {
+                 std::string filename, std::ofstream &timing_results) {
   MPI_Comm comm = MPI_COMM_WORLD;
   int rank, nproc;
   MPI_Comm_rank(comm, &rank);
@@ -138,6 +138,9 @@ void adios_write(int num_of_class, double ** decomposed_data,
   adios2::Engine writer = outIO.Open(filename, adios2::Mode::Write);
   adios2::Variable<double> * outVarV = new adios2::Variable<double>[num_of_class];
   adios2::Variable<int> * outIdx = new adios2::Variable<int>[num_of_class];
+  std::chrono::time_point<std::chrono::high_resolution_clock> start, end;
+  std::chrono::duration<double> elapsed;
+
   for (int i = 0; i < num_of_class; i++) {
     outVarV[i] = outIO.DefineVariable<double>(var_names[i], {1, 1, counters[i] * nproc},
                                                             {0, 0, counters[i] * rank},
@@ -148,8 +151,12 @@ void adios_write(int num_of_class, double ** decomposed_data,
   }
   writer.BeginStep();
   for (int i = 0; i < num_of_class; i++) {
+    start = std::chrono::high_resolution_clock::now();
     writer.Put<double>(outVarV[i], decomposed_data[i], adios2::Mode::Sync);
     writer.Put<int>(outIdx[i], index[i], adios2::Mode::Sync);
+    end = std::chrono::high_resolution_clock::now();
+    elapsed = end - start;
+    timing_results << std::to_string(elapsed.count()) << std::endl;
   }
   writer.EndStep();
 }
@@ -158,7 +165,7 @@ void adios_write(int num_of_class, double ** decomposed_data,
 void adios_read(int class_idx, double * decomposed_data, 
                  int * index, size_t counter, 
                  std::string var_name, std::string idx_name,
-                 std::string filename) {
+                 std::string filename, std::ofstream &timing_results) {
   MPI_Comm comm = MPI_COMM_WORLD;
   int rank, nproc;
   MPI_Comm_rank(comm, &rank);
@@ -180,8 +187,17 @@ void adios_read(int class_idx, double * decomposed_data,
   reader.BeginStep();
   std::vector<double> tmp_decomposed_data;
   std::vector<int> tmp_index;
+
+  std::chrono::time_point<std::chrono::high_resolution_clock> start, end;
+  std::chrono::duration<double> elapsed;
+  start = std::chrono::high_resolution_clock::now();
   reader.Get(inVarV, tmp_decomposed_data, adios2::Mode::Sync);
   reader.Get(inIdx, tmp_index, adios2::Mode::Sync);
+  end = std::chrono::high_resolution_clock::now();
+  elapsed = end - start;
+  timing_results << std::to_string(elapsed.count()) << std::endl;
+
+
   std::copy(tmp_decomposed_data.begin(), tmp_decomposed_data.end(), decomposed_data);
   std::copy(tmp_index.begin(), tmp_index.end(), index);
   reader.EndStep();
@@ -220,18 +236,6 @@ void vis(int rank,
   vtkh::DataSet *iso_output = marcher.GetOutput();
 
   vtkm::filter::CellMeasures<vtkm::Area> vols;
-
-  // std::vector<vtkm::Id> org_ids = data_set.GetDomainIds();
-  // std::vector<vtkm::Id> iso_ids = iso_output->GetDomainIds();
-  // for (int i = 0; i < org_ids.size(); i++ ){
-  //   std::cout << "rank(" << rank << "): " << org_ids[i] << ", ";
-  // }
-  // std::cout << std::endl;
-  //  for (int i = 0; i < iso_ids.size(); i++ ){
-  //   std::cout << "rank(" << rank << "): " <<  iso_ids[i] << ", ";
-  // }
-  // std::cout << std::endl;
-
 
   vtkm::cont::DataSet iso_dataset = iso_output->GetDomainById(rank);
   vtkm::cont::DataSet outputData = vols.Execute(iso_dataset);
@@ -361,32 +365,18 @@ int main(int argc, char *argv[]) {
   // }
 
   if (rank == 0) std::cout << "ADIOS write\n";
-  start = std::chrono::high_resolution_clock::now();
   adios_write(num_of_class, decomposed_data, index, counters, 
-              var_names, idx_names, filename);
-  end = std::chrono::high_resolution_clock::now();
-  elapsed = end - start;
-  timing_results << std::to_string(elapsed.count()) << std::endl;
-
+              var_names, idx_names, filename, timing_results);
 
   for (int i = 0; i < num_of_class; i++) {
 
     if (rank == 0) std::cout << "ADIOS read\n";
-    start = std::chrono::high_resolution_clock::now();
     adios_read(i, decomposed_data2[i], index2[i], counters[i], 
-                var_names[i], idx_names[i], filename);
-    end = std::chrono::high_resolution_clock::now();
-    elapsed = end - start;
-    timing_results << std::to_string(elapsed.count()) << std::endl;
+                var_names[i], idx_names[i], filename, timing_results);
 
-    //std::cout << "i = " << i << std::endl;
-    // print(decomposed_data2[i], counters[i]);
-    // print(index2[i], counters[i]);
     if (rank == 0) std::cout << "Recompose\n";
     recompose(recomposed_data, data_size, i, decomposed_data2[i],
               index2[i], counters[i]);
-    //std::cout << "recomposed_data\n";
-    //print(recomposed_data, data_size);
 
     if (rank == 0) std::cout << "Reconstruct\n";
     reconstruct(data2, n, n, n, 
@@ -402,7 +392,7 @@ int main(int argc, char *argv[]) {
       std::string cmd_mv = "mv " + old_file + " " + new_file;
       std::system(cmd_mv.c_str());
     }
-
+/*
     if (rank == 0) std::cout << "Vis\n";
     start = std::chrono::high_resolution_clock::now();
     double surface_result = 0.0;
@@ -416,6 +406,7 @@ int main(int argc, char *argv[]) {
     elapsed = end - start;
     timing_results << std::to_string(elapsed.count()) << std::endl;
     timing_results << std::to_string(surface_result) << std::endl;
+*/
   }
 
   timing_results.close();
