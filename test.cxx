@@ -196,7 +196,7 @@ void vis(int rank,
          double iso_value, double * surface_result) {
 
   vtkh::SetMPICommHandle(MPI_Comm_c2f(MPI_COMM_WORLD));
-  vtkh::ForceOpenMP();
+  //vtkh::ForceOpenMP();
   vtkm::Id3 dims(dim_z, dim_y, dim_x);
   vtkm::Id3 org(org_z, org_y, org_x);
   vtkm::Id3 spc(1, 1, 1);
@@ -245,8 +245,8 @@ void vis(int rank,
     //std::cout << "Area: " <<resultArrayHandle.GetPortalConstControl().Get(vtkm::Id(i)) << std::endl;
     *surface_result += resultArrayHandle.GetPortalConstControl().Get(vtkm::Id(i));
   }
-
-
+  std::cout << "surface: " <<  *surface_result << "\n";
+  /*
   vtkm::Bounds bounds(vtkm::Range(0, shape_z-1), vtkm::Range(0, shape_y-1), vtkm::Range(0, shape_x-1));
   vtkm::rendering::Camera camera;
   camera.ResetToBounds(bounds);
@@ -265,6 +265,7 @@ void vis(int rank,
   tracer.SetRange(vtkm::Range(0, 0.5));
   scene.AddRenderer(&tracer);  
   scene.Render();
+  */
 }
 
 template <typename T>
@@ -344,8 +345,7 @@ int main(int argc, char *argv[]) {
 
   if (rank == 0) std::cout << "Generating data\n";
   gen_data(data, data_size);
-  
-  //print(data, data_size);
+
 
   if (rank == 0) std::cout << "Refactoring\n";
   refactorize(data, n, n, n, refactorized_data, csv_prefix, device);
@@ -388,7 +388,7 @@ int main(int argc, char *argv[]) {
     //std::cout << "recomposed_data\n";
     //print(recomposed_data, data_size);
 
-    if (rank == 0) std::cout << "REconstruct\n";
+    if (rank == 0) std::cout << "Reconstruct\n";
     reconstruct(data2, n, n, n, 
                 recomposed_data, csv_prefix, device);
     if (device == 0) {
@@ -419,6 +419,7 @@ int main(int argc, char *argv[]) {
   }
 
   timing_results.close();
+
   MPI_Finalize();
   return 0;
 }
