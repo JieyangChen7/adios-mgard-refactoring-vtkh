@@ -304,6 +304,7 @@ int main(int argc, char *argv[]) {
   int num_of_class = atoi(argv[2]);
   std::string csv_prefix = argv[3];
   int device = atoi(argv[4]);
+  std::string filename = csv_prefix + "/data";
 
   std::string cmd_rmdir = "rm -rf " + csv_prefix + std::to_string(rank);
   std::string cmd_mkdir = "mkdir -p " + csv_prefix + std::to_string(rank);
@@ -312,7 +313,7 @@ int main(int argc, char *argv[]) {
 
   csv_prefix = csv_prefix + std::to_string(rank) + "/";
 
-  std::string filename = "data";
+  
   int data_size = n*n*n;
   double * data = new double[data_size];
   double * data2 = new double[data_size];
@@ -340,12 +341,16 @@ int main(int argc, char *argv[]) {
   std::ofstream timing_results;
   timing_results.open (csv_prefix + "workflow.csv");
 
-
+  if (rank == 0) std::cout << "Generating data\n";
   gen_data(data, data_size);
+  
   //print(data, data_size);
 
+  if (rank == 0) std::cout << "Refactoring\n";
   refactorize(data, n, n, n, refactorized_data, csv_prefix, device);
   //print(refactorized_data, data_size);
+
+  if (rank == 0) std::cout << "Decompose\n";
   decompose(refactorized_data, data_size, num_of_class, 
             decomposed_data, index, counters);
   // for (int i = 0; i < num_of_class; i++) {
@@ -354,6 +359,7 @@ int main(int argc, char *argv[]) {
   //   print(index[i], counters[i]);
   // }
 
+  if (rank == 0) std::cout << "ADIOS write\n";
   start = std::chrono::high_resolution_clock::now();
   adios_write(num_of_class, decomposed_data, index, counters, 
               var_names, idx_names, filename);
@@ -361,7 +367,10 @@ int main(int argc, char *argv[]) {
   elapsed = end - start;
   timing_results << std::to_string(elapsed.count()) << std::endl;
 
+
   for (int i = 0; i < num_of_class; i++) {
+
+    if (rank == 0) std::cout << "ADIOS read\n";
     start = std::chrono::high_resolution_clock::now();
     adios_read(i, decomposed_data2[i], index2[i], counters[i], 
                 var_names[i], idx_names[i], filename);
@@ -372,11 +381,13 @@ int main(int argc, char *argv[]) {
     //std::cout << "i = " << i << std::endl;
     // print(decomposed_data2[i], counters[i]);
     // print(index2[i], counters[i]);
+    if (rank == 0) std::cout << "Recompose\n";
     recompose(recomposed_data, data_size, i, decomposed_data2[i],
               index2[i], counters[i]);
     //std::cout << "recomposed_data\n";
     //print(recomposed_data, data_size);
 
+    if (rank == 0) std::cout << "REconstruct\n";
     reconstruct(data2, n, n, n, 
                 recomposed_data, csv_prefix, device);
     if (device == 0) {
@@ -391,6 +402,7 @@ int main(int argc, char *argv[]) {
       std::system(cmd_mv.c_str());
     }
 
+    if (rank == 0) std::cout << "Vis\n";
     start = std::chrono::high_resolution_clock::now();
     double surface_result = 0.0;
     vis(rank,
